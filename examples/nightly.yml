@@ -1,0 +1,34 @@
+# A nightly leg, the shape timbrado expects to be run in. GITHUB token only;
+# `issues: write` is the one write it has. Copy per target.
+name: timbrado
+on:
+  schedule:
+    - cron: "5 10 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  wrangler:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Try wrangler main against our gates
+        id: leg
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          bunx timbrado try wrangler --gate "bun run test" --json report.json > leg.txt 2>&1
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+          set -e
+          cat leg.txt
+      - name: File, comment, or close the one issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bunx timbrado report --target wrangler --json report.json --exit "${{ steps.leg.outputs.exit }}" --reproduce "timbrado try wrangler --gate 'bun run test'"

@@ -1,0 +1,15 @@
+{
+  "name": "timbrado",
+  "version": "0.1.0",
+  "description": "Run your own gates against the heads, nightlies, nexts and canaries of what you depend on, watch for the upstream fixes you are waiting on, and read what a pin adopts before you move it. Proposes nothing.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "bin": { "timbrado": "./src/cli.ts" },
+  "scripts": {
+    "test": "bun test conformance",
+    "test:live": "TIMBRADO_LIVE=1 bun test conformance",
+    "timbrado": "bun src/cli.ts"
+  },
+  "engines": { "bun": ">=1.4.0" }
+}

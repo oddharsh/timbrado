@@ -1,0 +1,36 @@
+{
+  "$comment": "Channel recipes measured on 2026-09-14/15, one per upstream that has a head at all. Copy the entries you depend on into your own timbrado.json and set `pinned`. A recipe rots when the upstream changes how it publishes; `timbrado resolve` fails by name when it does.",
+  "targets": {
+    "bun": {
+      "kind": "npm-dated-canary",
+      "package": "bun",
+      "tag": "canary",
+      "source": "oven-sh/bun",
+      "binary": {
+        "platforms": {
+          "linux-x64": "@oven/bun-linux-x64",
+          "linux-arm64": "@oven/bun-linux-aarch64",
+          "darwin-x64": "@oven/bun-darwin-x64",
+          "darwin-arm64": "@oven/bun-darwin-aarch64"
+        },
+        "path": "package/bin/bun"
+      }
+    },
+    "bun-rolling": {
+      "kind": "github-rolling-tag",
+      "owner": "oven-sh",
+      "repo": "bun",
+      "tag": "canary",
+      "asset": {
+        "linux-x64": "bun-linux-x64.zip",
+        "linux-arm64": "bun-linux-aarch64.zip",
+        "darwin-x64": "bun-darwin-x64.zip",
+        "darwin-arm64": "bun-darwin-aarch64.zip"
+      }
+    },
+    "wrangler": { "kind": "pkg-pr-new", "owner": "cloudflare", "repo": "workers-sdk", "package": "wrangler", "ref": "main" },
+    "miniflare": { "kind": "pkg-pr-new", "owner": "cloudflare", "repo": "workers-sdk", "package": "miniflare", "ref": "main" },
+    "typescript": { "kind": "npm-dist-tag", "package": "typescript", "tag": "next", "source": "microsoft/typescript-go" },
+    "playwright-core": { "kind": "npm-dist-tag", "package": "playwright-core", "tag": "next", "source": "microsoft/playwright" }
+  }
+}

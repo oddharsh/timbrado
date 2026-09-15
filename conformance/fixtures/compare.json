@@ -1,0 +1,14 @@
+{
+  "total_commits": 3,
+  "commits": [
+    { "sha": "a", "commit": { "message": "perf(wrangler): remove execa (#1)\n\nbody", "author": { "name": "someone" } }, "author": { "login": "someone" } },
+    { "sha": "b", "commit": { "message": "chore: bump", "author": { "name": "robobun" } }, "author": { "login": "robobun" } },
+    { "sha": "c", "commit": { "message": "<script>x</script> subject", "author": { "name": "z" } }, "author": null }
+  ],
+  "files": [
+    { "filename": ".changeset/nice-cats.md", "status": "added", "patch": "+---\n+\"wrangler\": patch\n+\"miniflare\": minor\n+---\n+\n+Replace execa with tinyexec.\n+Second line." },
+    { "filename": ".changeset/big-dog.md", "status": "added", "patch": "+---\n+\"miniflare\": major\n+---\n+\n+Drop the legacy API." },
+    { "filename": ".changeset/old.md", "status": "removed", "patch": "-gone" },
+    { "filename": "packages/wrangler/src/x.ts", "status": "modified", "patch": "+x" }
+  ]
+}
