@@ -165,6 +165,26 @@ default in the same Canary, and a same-day workerd release that the site's
 24-hour install window refused. `docs/measurements.md` has the numbers. The
 name is the Spanish song canary, bred for its timbre.
 
+## Install
+
+Unpublished on npm, like every extraction of its kind here; install it by
+commit, which is also the only pinnable form of a git dependency:
+
+```bash
+bun add --dev github:oddharsh/timbrado#<full sha>
+```
+
+`dist/` is committed and transpiled from `src/` on every commit (the
+conformance suite diffs the two), because node refuses to type-strip a `.ts`
+under `node_modules` and a dependency that only bun can import is bun-only by
+accident. The exports map hands TypeScript the `.ts` source for types, bun the
+source to run, and node `dist/`:
+
+```ts
+import { plan, render } from "timbrado/report";
+import { runWatch, watchRow } from "timbrado/watch";
+```
+
 ## Conformance
 
 `bun test` runs the offline suite; `TIMBRADO_LIVE=1 bun test` adds four

@@ -27,6 +27,20 @@ import { ageHours, resolve } from "./resolve.ts";
 import { renderSurvey, survey } from "./survey.ts";
 import { type WatchResult, loadWatches, runWatch, watchRow } from "./watch.ts";
 
+const USAGE = `timbrado: run your own gates against the heads, nightlies, nexts and
+canaries of what you depend on; watch for the upstream fixes you are
+waiting on; read what a pin adopts before you move it. Proposes nothing.
+
+  timbrado survey [package.json]                      which dependencies have a head at all
+  timbrado resolve <target> [--registry timbrado.json] the exact candidate a target names today
+  timbrado fetch <target> --into <dir>                 download a runtime candidate's binary, integrity checked
+  timbrado try <target|spec> --gate "<cmd>" [--repo .] [--allow-floating] [--keep] [--json out]
+  timbrado digest --repo <owner/name> --from <sha> --to <sha> [--prefer wrangler,miniflare] [--out file]
+  timbrado watch --pinned <exe> --candidate <exe> [--watches ./timbrado.watches.ts] [--json out]
+  timbrado report --target <name> --json <report> [--exit <n>] [--repo owner/name] [--label x]
+
+Exit codes: 0 green or nothing to do, 1 a finding, 2 the instrument could not run.`;
+
 const argv = process.argv.slice(2);
 const cmd = argv[0];
 const has = (name: string) => argv.includes(name);
@@ -167,7 +181,7 @@ async function main(): Promise<number> {
       return 0;
     }
     default:
-      console.error(readFileSync(new URL(import.meta.url), "utf8").split("\n").slice(1, 14).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
+      console.error(USAGE);
       return cmd ? 2 : 0;
   }
 }
