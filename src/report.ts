@@ -27,6 +27,8 @@ export type Report = {
   signature: string;
   gates?: (Gate & { hard?: boolean })[];
   watches?: WatchResult[];
+  /** any other structured finding a leg wants in the issue: a caption, columns, rows. Cells are escaped for the table. */
+  tables?: { caption?: string; columns: string[]; rows: string[][] }[];
   reason?: string;
   ms?: number;
 };
@@ -78,6 +80,13 @@ export function render(report: Report, runUrl?: string, reproduce?: string): str
     lines.push("");
     for (const w of report.watches) if (watchMoved(w)) lines.push(`- \`${w.name}\` landed means: ${w.landed}`);
     if (report.watches.some(watchMoved)) lines.push("");
+  }
+  for (const t of report.tables ?? []) {
+    if (!t.rows.length) continue;
+    if (t.caption) lines.push(t.caption, "");
+    lines.push(`| ${t.columns.map(cell).join(" | ")} |`, `|${t.columns.map(() => "---").join("|")}|`);
+    for (const r of t.rows) lines.push(`| ${r.map(cell).join(" | ")} |`);
+    lines.push("");
   }
   if (report.reason) lines.push(`Reason: ${report.reason}`, "");
   lines.push(`${reproduce ? `Reproduce with \`${reproduce}\`. ` : ""}Filed by timbrado${runUrl ? ` from [this run](${runUrl})` : ""}; it proposes nothing.`, "", marker(report.target, report.signature));

@@ -39,4 +39,14 @@ describe("report", () => {
     expect(body).toContain(marker("bun", "s"));
     expect(body).toContain("Reproduce with `timbrado try bun`");
   });
+  test("render: a leg's own tables come through, cells escaped, empty ones skipped", () => {
+    const body = render({ target: "browsers", verdict: "changed", signature: "s", subject: {}, tables: [
+      { caption: "Probes that moved:", columns: ["probe", "pair", "stable|pre"], rows: [["`live:jxl-decode`", "chrome:chrome-canary", "false -> true"]] },
+      { columns: ["nothing"], rows: [] },
+    ] });
+    expect(body).toContain("Probes that moved:");
+    expect(body).toContain("| probe | pair | stable\\|pre |");
+    expect(body).toContain("| `live:jxl-decode` | chrome:chrome-canary | false -> true |");
+    expect(body).not.toContain("| nothing |");
+  });
 });
