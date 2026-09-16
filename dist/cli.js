@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
+import { spawnSync } from "node:child_process";
 import { compare, renderDigest } from "./digest.js";
 import { tryCandidate } from "./isolate.js";
 import { validateRegistry } from "./registry.js";
@@ -10,11 +11,13 @@ import { apply, findOpen, plan, render, verdictOf } from "./report.js";
 import { ageHours, resolve } from "./resolve.js";
 import { renderSurvey, survey } from "./survey.js";
 import { loadWatches, runWatch, watchRow } from "./watch.js";
+import { nativeBinary } from "./native.js";
 const USAGE = `timbrado: run your own gates against the heads, nightlies, nexts and
 canaries of what you depend on; watch for the upstream fixes you are
 waiting on; read what a pin adopts before you move it. Proposes nothing.
 
   timbrado survey [package.json]                      which dependencies have a head at all
+  timbrado observe <opportunities.json> [--json out]  measure capabilities and their adoption conditions
   timbrado resolve <target> [--registry timbrado.json] the exact candidate a target names today
   timbrado fetch <target> --into <dir>                 download a runtime candidate's binary, integrity checked
   timbrado try <target|spec> --gate "<cmd>" [--repo .] [--allow-floating] [--keep] [--json out]
@@ -39,6 +42,17 @@ function loadRegistry() {
 }
 async function main() {
   switch (cmd) {
+    case "observe": {
+      if (!positional[0])
+        throw new Error("usage: timbrado observe <opportunities.json> [--json out]");
+      const args = ["observe", resolvePath(positional[0])];
+      if (flag("--json"))
+        args.push("--json", resolvePath(flag("--json")));
+      const run = spawnSync(nativeBinary(), args, { stdio: "inherit" });
+      if (run.error)
+        throw run.error;
+      return run.status ?? 2;
+    }
     case "survey": {
       const path = positional[0] ?? "package.json";
       const rows = await survey(JSON.parse(readFileSync(path, "utf8")));
@@ -124,14 +138,25 @@ ${"".padEnd(16)} binary:  ${c.binary.url}` : ""}`);
         for (const n of g.notes ?? [])
           console.log(`       ${n}`);
       }
-      const v = verdictOf(r.gates, []);
-      const report = { target: String(subject.target ?? what), ...v, subject, gates: r.gates, ms: Date.now() - started };
+      const report = {
+        schemaVersion: 1,
+        target: String(subject.target ?? what),
+        verdict: r.verdict,
+        signature: r.signature,
+        reason: r.reason,
+        subject,
+        gates: r.gates,
+        experiment: r.experiment,
+        ms: Date.now() - started
+      };
       if (flag("--json"))
         writeFileSync(flag("--json"), JSON.stringify(report, null, 2) + `
 `);
       if (r.worktree)
         console.log(`kept ${r.worktree}`);
-      return r.ok ? 0 : 1;
+      if (r.reason)
+        console.log(r.reason);
+      return r.verdict === "instrument" ? 2 : r.verdict === "green" ? 0 : 1;
     }
     case "digest": {
       const repo = flag("--repo");
@@ -176,7 +201,7 @@ ${"".padEnd(16)} binary:  ${c.binary.url}` : ""}`);
       if (flag("--json"))
         writeFileSync(flag("--json"), JSON.stringify(report, null, 2) + `
 `);
-      return v.verdict === "green" ? 0 : 1;
+      return v.verdict === "instrument" ? 2 : v.verdict === "green" ? 0 : 1;
     }
     case "report": {
       const target = flag("--target");

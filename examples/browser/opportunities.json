@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "target": "browser-capabilities",
+  "opportunities": [
+    {
+      "name": "native-margin-trim",
+      "intention": "Replace first-child and last-child margin overrides with margin-trim: block.",
+      "affected": ["examples/browser/margin-trim.mjs"],
+      "sources": ["https://drafts.csswg.org/css-box-4/#margin-trim"],
+      "verification": "A block container trims both child block margins while the untrimmed control retains them.",
+      "adoption": "Confirm the project's supported browser matrix and run its layout fixtures before changing CSS. Canary support alone does not permit removal of fallbacks.",
+      "baseline": {
+        "id": "chrome-stable",
+        "command": {
+          "argv": ["node", "{manifest}/margin-trim.mjs", "chrome"],
+          "timeoutMs": 30000
+        }
+      },
+      "candidate": {
+        "id": "chrome-canary",
+        "command": {
+          "argv": ["node", "{manifest}/margin-trim.mjs", "chrome-canary"],
+          "timeoutMs": 30000
+        }
+      }
+    }
+  ]
+}

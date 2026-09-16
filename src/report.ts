@@ -18,6 +18,7 @@
 import { spawnSync } from "node:child_process";
 import type { Gate } from "./isolate.ts";
 import { type WatchResult, watchMoved } from "./watch.ts";
+import type { ExperimentResult, OpportunityFinding } from "./native.ts";
 
 export type Verdict = "green" | "changed" | "red" | "instrument";
 export type Report = {
@@ -31,6 +32,9 @@ export type Report = {
   tables?: { caption?: string; columns: string[]; rows: string[][] }[];
   reason?: string;
   ms?: number;
+  schemaVersion?: 1;
+  experiment?: ExperimentResult;
+  opportunities?: OpportunityFinding[];
 };
 export type Open = { number: number; text: string } | null;
 export type Action = { kind: "none" } | { kind: "create" } | { kind: "comment"; number: number } | { kind: "close"; number: number };
@@ -48,6 +52,7 @@ export function plan(report: Pick<Report, "target" | "verdict" | "signature">, o
 
 /** A verdict and signature from gates and watches, the way every leg computes them. */
 export function verdictOf(gates: (Gate & { hard?: boolean })[], watches: WatchResult[], reason?: string): { verdict: Verdict; signature: string } {
+  if (watches.some((w) => w.pinned === null || w.candidate === null)) return { verdict: "instrument", signature: "instrument" };
   const failing = gates.filter((g) => !g.ok);
   const hard = failing.filter((g) => g.hard !== false).map((g) => g.name);
   const soft = failing.filter((g) => g.hard === false).map((g) => g.name);
@@ -80,6 +85,22 @@ export function render(report: Report, runUrl?: string, reproduce?: string): str
     lines.push("");
     for (const w of report.watches) if (watchMoved(w)) lines.push(`- \`${w.name}\` landed means: ${w.landed}`);
     if (report.watches.some(watchMoved)) lines.push("");
+  }
+  if (report.experiment) {
+    lines.push(`Experiment: **${report.experiment.outcome}**. Baseline and candidate were measured independently.`, "");
+  }
+  for (const finding of report.opportunities ?? []) {
+    lines.push(`**${cell(finding.name)}: ${cell(finding.status)}**`, "",
+      `Intention: ${cell(finding.intention)}`, "",
+      `Affected paths: ${finding.affected.map((p) => `\`${cell(p)}\``).join(", ")}`, "",
+      `Probe establishes: ${cell(finding.verification)}`, "",
+      "| subject | result | detail |", "|---|---|---|");
+    for (const side of [finding.experiment.baseline, finding.experiment.candidate]) {
+      const m = side.measurement;
+      lines.push(`| ${cell(side.id)} | ${m.value === null ? "did not run" : String(m.value)} | ${cell(m.detail)} |`);
+    }
+    lines.push("", `Adoption condition: ${cell(finding.adoption)}`, "", `Next step: ${cell(finding.nextStep)}`, "",
+      `Sources: ${finding.sources.map((s) => `<${s}>`).join(", ")}`, "");
   }
   for (const t of report.tables ?? []) {
     if (!t.rows.length) continue;

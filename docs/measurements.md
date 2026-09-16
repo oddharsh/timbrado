@@ -2,6 +2,32 @@
 
 Everything the README claims, with the date it was read.
 
+## Rust opportunity runner (2026-09-16 UTC)
+
+`target/release/timbrado observe examples/browser/opportunities.json` ran the
+same layout probe in disposable profiles of the two installed browsers:
+
+| subject | observed version | control height | trimmed height | trimmed top / bottom gaps | reading |
+|---|---|---|---|---|---|
+| Chrome Stable | 153.0.8010.37 | 60 px | 60 px | 20 / 30 px | false |
+| Chrome Canary | 156.0.8060.2 | 60 px | 10 px | 0 / 0 px | true |
+
+Both probes exited 0. The result was `improvement`, with report verdict
+`changed` and signature `changed:opportunity:native-margin-trim:f>t`.
+The report retained each browser version and geometry and left the project's
+browser-support policy as a separate adoption condition. No feature-enabling
+flags were requested by the probe; Playwright used its default launch options.
+
+The first attempt inside the development filesystem sandbox could not launch
+either browser. It returned null measurements, verdict `instrument`, and exit
+2. The successful run used the permissions needed to launch the installed
+browsers. Neither run changed a user browser profile or project CSS.
+
+The eight Bun watches currently declared by aadhar.sh also ran through the
+Rust engine under the installed Bun 1.4.2. All returned real boolean readings
+(false), including the frozen oxc / SWC comparison at 5,843 / 5,786 bytes.
+The site's dependency pin and source files were unchanged.
+
 ## Which dependencies have a head (2026-09-15)
 
 `timbrado survey` on aadhar.sh's `package.json`, 12 direct dependencies:

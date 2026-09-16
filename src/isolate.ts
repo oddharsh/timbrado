@@ -2,11 +2,12 @@
 // YOUR gate command against it. The tool owns the isolation; the project
 // owns the verdict.
 //
-// A detached worktree in the temp directory, outside the repository, so
+// Two detached worktrees in the temp directory, outside the repository, so
 // nothing resolves from the parent's node_modules (a nested worktree walks up
 // into it, which is how a removal reads green). A frozen install of what is
-// committed, then the candidate added on top with the package manager the
-// lockfile names, then the gate. The worktree is removed in a finally.
+// committed on each side, then the candidate added on its side with the package
+// manager the lockfile names. Rust runs the same gate on both. Both checkouts
+// name the same captured HEAD, and neither gate can contaminate the other's files.
 //
 // Two refusals are the tool's, because they are about the candidate rather
 // than the project:
@@ -27,10 +28,15 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { experiment, type ExperimentResult, type Measurement, type Subject } from "./native.ts";
 
 export type Manager = "bun" | "npm" | "pnpm" | "yarn";
 export type Gate = { name: string; ok: boolean; detail: string; notes?: string[] };
-export type TryResult = { ok: boolean; gates: Gate[]; worktree: string | null };
+export type TryResult = {
+  ok: boolean; gates: Gate[]; worktree: string | null;
+  verdict: "green" | "changed" | "red" | "instrument"; signature: string;
+  reason?: string; experiment?: ExperimentResult;
+};
 
 export function managerOf(root: string): Manager {
   if (existsSync(join(root, "bun.lock")) || existsSync(join(root, "bun.lockb"))) return "bun";
@@ -68,51 +74,68 @@ const tail = (out: { stdout?: string | null; stderr?: string | null }, n = 4) =>
 export function tryCandidate(opts: { root: string; spec: string; gate: string; allowFloating?: boolean; keep?: boolean; timeoutMs?: number; manager?: Manager }): TryResult {
   const gates: Gate[] = [];
   const root = realpathSync(opts.root);
+  const unavailable = (reason: string, worktree: string | null = null): TryResult => ({
+    ok: false, gates, worktree, verdict: "instrument", signature: "instrument", reason,
+  });
   if (isFloating(opts.spec) && !opts.allowFloating) {
-    gates.push({ name: "candidate is pinnable", ok: false, detail: `${opts.spec} floats; pass --allow-floating to try it anyway (it must never be pinned)` });
-    return { ok: false, gates, worktree: null };
+    return unavailable(`${opts.spec} floats; pass --allow-floating to try it anyway (it must never be pinned)`);
   }
   const manager = opts.manager ?? managerOf(root);
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), "timbrado-try-")));
-  const wt = join(scratch, "tree");
-  const run = (cmd: string, args: string[], cwd: string, timeout?: number) => spawnSync(cmd, args, { cwd, encoding: "utf8", timeout });
+  const baseline = join(scratch, "baseline");
+  const candidate = join(scratch, "candidate");
+  const created: string[] = [];
+  const run = (args: string[]) => spawnSync("git", args, { cwd: root, encoding: "utf8", timeout: 60_000 });
   try {
-    const add = run("git", ["worktree", "add", "--detach", wt, "HEAD"], root);
-    if (add.status !== 0) {
-      gates.push({ name: "isolated checkout of HEAD", ok: false, detail: tail(add).join(" ") });
-      return { ok: false, gates, worktree: null };
+    const head = run(["rev-parse", "--verify", "HEAD"]);
+    if (head.status !== 0) return unavailable(`cannot read HEAD: ${tail(head).join(" ")}`);
+    const revision = head.stdout.trim();
+    for (const tree of [baseline, candidate]) {
+      const add = run(["worktree", "add", "--detach", tree, revision]);
+      if (add.status !== 0) return unavailable(`cannot create isolated checkout: ${tail(add).join(" ")}`, opts.keep ? scratch : null);
+      created.push(tree);
     }
-    const frozen = run(manager, COMMANDS[manager].frozen, wt, 10 * 60_000);
-    if (frozen.status !== 0) {
-      gates.push({ name: `frozen ${manager} install of HEAD`, ok: false, detail: "the committed tree does not install, which is the project's problem rather than the candidate's", notes: tail(frozen) });
-      return { ok: false, gates, worktree: opts.keep ? wt : null };
+    const subject = (cwd: string, isCandidate: boolean): Subject => ({
+      id: isCandidate ? `${revision} + ${opts.spec}` : revision,
+      setup: [
+        { argv: [manager, ...COMMANDS[manager].frozen], cwd, timeoutMs: 10 * 60_000 },
+        ...(isCandidate ? [{ argv: [manager, ...COMMANDS[manager].add(opts.spec)], cwd, timeoutMs: 10 * 60_000 }] : []),
+      ],
+      command: { argv: ["/bin/sh", "-c", opts.gate], cwd, timeoutMs: opts.timeoutMs ?? 20 * 60_000 },
+    });
+    const result = experiment("project-gate", subject(baseline, false), subject(candidate, true), "exit-code");
+    const addGate = (name: string, reading: Measurement) => gates.push({
+      name, ok: reading.value === true, detail: reading.detail,
+      notes: reading.value === true ? [] : tail(reading, 12),
+    });
+    for (const [name, side] of [["baseline", result.baseline], ["candidate", result.candidate]] as const) {
+      side.setup.forEach((reading, i) => addGate(`${name}: ${i === 0 ? `frozen ${manager} install` : `add ${opts.spec}`}`, reading));
+      addGate(`${name} gate: ${opts.gate}`, side.measurement);
     }
-    gates.push({ name: `frozen ${manager} install of HEAD`, ok: true, detail: "ok" });
-
-    const added = run(manager, COMMANDS[manager].add(opts.spec), wt, 10 * 60_000);
-    if (added.status !== 0) {
-      const text = tail(added, 3).join(" ");
-      const age = releaseAgeSeconds(root);
-      const tooYoung = manager === "bun" && age && /failed to resolve/.test(text);
-      gates.push({
-        name: `add ${opts.spec}`,
-        ok: false,
-        detail: tooYoung
-          ? `${text.slice(0, 160)} — bunfig.toml sets minimumReleaseAge = ${age}s (${(age / 3600).toFixed(0)}h); a package published inside that window reads exactly like this. Exempt it by name or wait.`
-          : text.slice(0, 200),
-      });
-      return { ok: false, gates, worktree: opts.keep ? wt : null };
+    const verdict = result.outcome === "unchanged" ? "green" : result.outcome === "improvement" ? "changed"
+      : result.outcome === "regression" ? "red" : "instrument";
+    let reason = result.outcome === "blocked" ? "The gate fails on both subjects; no candidate regression or recovery was established."
+      : result.outcome === "instrument" ? "At least one subject could not be measured." : undefined;
+    const install = result.candidate.setup[1];
+    const age = releaseAgeSeconds(root);
+    if (manager === "bun" && age && install?.value !== true && /failed to resolve/.test(`${install?.stderr ?? ""}\n${install?.stdout ?? ""}`)) {
+      reason = `${reason ?? "Candidate setup failed."} bunfig.toml sets minimumReleaseAge = ${age}s; check whether a required package is inside that window.`;
     }
-    gates.push({ name: `add ${opts.spec}`, ok: true, detail: "installed" });
-
-    const gate = spawnSync(opts.gate, { cwd: wt, encoding: "utf8", shell: true, timeout: opts.timeoutMs ?? 20 * 60_000 });
-    const timedOut = gate.signal === "SIGTERM";
-    const ok = !timedOut && gate.status === 0;
-    gates.push({ name: `gate: ${opts.gate}`, ok, detail: timedOut ? "timed out" : `exit ${gate.status}`, notes: ok ? [] : tail(gate, 12) });
-    return { ok, gates, worktree: opts.keep ? wt : null };
+    return {
+      ok: result.candidate.measurement.value === true && verdict !== "instrument", gates,
+      worktree: opts.keep ? candidate : null, experiment: result, verdict, reason,
+      signature: verdict === "red" ? `red:gate:${opts.gate}:t>f` : verdict === "changed" ? `changed:gate:${opts.gate}:f>t` : verdict,
+    };
+  } catch (error) {
+    return unavailable(error instanceof Error ? error.message : String(error), opts.keep ? scratch : null);
   } finally {
     if (!opts.keep) {
-      run("git", ["worktree", "remove", "--force", wt], root);
+      const failures: string[] = [];
+      for (const tree of created) {
+        const removed = run(["worktree", "remove", "--force", tree]);
+        if (removed.status !== 0) failures.push(`could not remove worktree ${tree}: ${tail(removed).join(" ")}`);
+      }
+      if (failures.length) throw new Error(failures.join("\n"));
       rmSync(scratch, { recursive: true, force: true });
     }
   }
