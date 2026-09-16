@@ -1,7 +1,4 @@
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { measure } from "./native.js";
 const THREAD = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+(\/(issues|pull)\/\d+)?$/;
 export function checkWatch(w) {
   const problems = [];
@@ -20,23 +17,11 @@ export function checkWatch(w) {
   return problems;
 }
 export function runWatch(exe, watch, timeoutMs = 60000) {
-  const cwd = mkdtempSync(join(tmpdir(), "timbrado-watch-"));
   try {
-    const run = spawnSync(exe, ["-e", watch.script], { cwd, encoding: "utf8", timeout: timeoutMs });
-    const line = (run.stdout || "").trim().split(`
-`).filter(Boolean).pop() ?? "";
-    try {
-      const parsed = JSON.parse(line);
-      if (parsed.landed !== true && parsed.landed !== false)
-        throw new Error("no landed boolean");
-      return { landed: parsed.landed, detail: parsed.detail ?? "" };
-    } catch {
-      const why = (run.stderr || run.stdout || "").trim().split(`
-`).filter(Boolean).pop() ?? `exit ${run.status}`;
-      return { landed: null, detail: `did not run: ${why.slice(0, 120)}` };
-    }
-  } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    const reading = measure({ argv: [exe, "-e", watch.script], timeoutMs }, "probe");
+    return { landed: reading.value, detail: reading.value === null ? `did not run: ${reading.detail}` : reading.detail };
+  } catch (error) {
+    return { landed: null, detail: `did not run: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
 export function watchRow(w, pinned, candidate) {

@@ -27,6 +27,15 @@ describe("watch", () => {
     expect(r.landed).toBeNull();
     expect(r.detail).toMatch(/^did not run/);
   });
+  test("successful JSON followed by a crash is still unmeasured", () => {
+    const r = runWatch(process.execPath, { ...w, measured: "2026-09-15, x", script: `console.log(JSON.stringify({ landed: true, detail: "printed before crashing" })); process.exit(3)` });
+    expect(r.landed).toBeNull();
+    expect(r.detail).toContain("probe exited 3");
+  });
+  test("an extra stdout line violates the probe protocol", () => {
+    const r = runWatch(process.execPath, { ...w, measured: "2026-09-15, x", script: `console.log("noise"); console.log(JSON.stringify({ landed: true, detail: "not the only output" }))` });
+    expect(r.landed).toBeNull();
+  });
   test("every example watch runs under this bun and answers a boolean (the control: a watch that reads null is decoration)", () => {
     for (const x of watches) {
       expect(checkWatch(x)).toEqual([]);

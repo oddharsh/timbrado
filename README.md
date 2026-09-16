@@ -1,10 +1,15 @@
 # timbrado
 
-`timbrado` runs your own gates against the heads, nightlies, nexts and
-canaries of what you depend on, watches for the upstream fixes you are
-waiting on, and tells you what a pin adopts before you move it. It proposes
-nothing: no pin is written, no PR is opened, and it holds no credential
-beyond a GitHub token for reading.
+`timbrado` measures what changes outside your repository make possible
+inside it. It runs your gates against dependency candidates, watches for
+upstream fixes, and connects newly available capabilities to affected code
+and an adoption condition. It writes no pins and opens no PRs. The explicit
+`report` command can create, comment on, and close GitHub issues.
+
+The measurement engine is Rust. The existing JavaScript APIs delegate
+execution to it; resolvers, digests, worktree preparation, and issue reporting
+remain TypeScript in this first migration slice. See
+[the experiment contract and migration notes](docs/experiments.md).
 
 Dependabot and Renovate move you between releases. The interesting weeks are
 the ones before the release, when a regression in a runtime or a bundler is
@@ -32,9 +37,10 @@ next release is the first you will hear of them.
 
 ```bash
 timbrado survey [package.json]                          # which dependencies have a head
+timbrado observe opportunities.json [--json report.json] # capabilities, evidence, and adoption conditions
 timbrado resolve <target> [--registry timbrado.json]    # the exact candidate a target names today
 timbrado fetch <target> --into <dir>                    # a runtime's binary, sha512 checked against the registry
-timbrado try <target> --gate "<cmd>"                    # install it into an isolated checkout of HEAD, run YOUR gate
+timbrado try <target> --gate "<cmd>"                    # run YOUR gate on baseline and candidate checkouts
 timbrado digest --repo o/r --from <sha> --to <sha>      # what the range adopts: changesets, then commit subjects
 timbrado watch --pinned <exe> --candidate <exe>         # the fixes you wait on, read under both runtimes
 timbrado report --target <name> --json report.json     # at most one open issue per target, kept quiet
@@ -73,17 +79,24 @@ hours earlier.
 
 ### `try`: the tool owns the isolation, you own the verdict
 
-A detached worktree in the temp directory, outside your repository so nothing
-resolves from the parent's `node_modules`; a frozen install of what is
-committed; the candidate added with the package manager your lockfile names;
-your gate command. Removed in a `finally`.
+Two detached worktrees in the temp directory, outside your repository so
+nothing resolves from the parent's `node_modules`. Both start at the same
+captured commit. Each receives a frozen install; the candidate checkout also
+receives the candidate package. Rust runs your gate on both. Both worktrees
+are removed afterward, unless `--keep` preserves them for inspection.
 
-```
-$ timbrado try wrangler --gate "node tools/check-routes-harness.ts"
-  ok   frozen bun install of HEAD — ok
-  ok   add https://pkg.pr.new/cloudflare/workers-sdk/wrangler@f2b3a6d — installed
-  ok   gate: node tools/check-routes-harness.ts — exit 0
-```
+| baseline gate | candidate gate | result | exit |
+|---|---|---|---|
+| passes | passes | unchanged / green | 0 |
+| fails | passes | improvement / changed | 1 |
+| passes | fails | regression / red | 1 |
+| fails | fails | blocked / instrument; no attributable change | 2 |
+| either did not run | | instrument | 2 |
+
+Setup failures, missing commands, signals, and timeouts are instrument
+failures. A failing baseline cannot establish a candidate regression.
+The JSON report retains each side's identity, setup, process status, output,
+and measurement. Worktrees separate files; they are not a security sandbox.
 
 A floating spec (`@main`, a dist-tag, a bare name) is refused unless you pass
 `--allow-floating`, and there is no `pin` verb on purpose: a floating ref
@@ -113,7 +126,33 @@ export const watches = [{
 Each watch is read under the pin and under the candidate. A row that differs
 is the finding, with the direction in the signature (`watch:<name>:f>t`); a
 row landed in both is the cue to retire it; a probe that crashes reads `did
-not run` and moves nothing.
+not run` and moves nothing. Any unmeasured watch makes the report an instrument
+failure, so it cannot close an existing issue as recovered. A successful JSON
+line followed by a nonzero exit is also unmeasured. Diagnostics belong on stderr.
+
+### `observe`: what a capability would let you change
+
+A JSON manifest names an intention, affected repository paths, source URLs,
+the behavior a probe establishes, and the adoption condition a maintainer
+still needs to check. Each opportunity supplies baseline and candidate
+commands. Commands can use any language and emit the same `{ landed, detail }`
+probe protocol, with optional structured `evidence`.
+
+The browser example checks actual `margin-trim` layout behavior against an
+untrimmed control in Chrome Stable and Canary. It records browser versions
+and geometry; it does not interpret Canary support as permission to remove
+compatibility code.
+
+```bash
+bun install --cwd examples/browser --frozen-lockfile
+cargo run --release --locked -- observe examples/browser/opportunities.json --json report.json
+# The existing CLI exposes the same engine:
+bun run timbrado observe examples/browser/opportunities.json --json report.json
+```
+
+Chrome Stable and Canary must already be installed. Playwright uses disposable
+profiles. The example's affected path points at its fixture; copy the manifest
+and name your own affected files and support policy before using it on a project.
 
 ### `digest`: what a pin adopts
 
@@ -167,12 +206,30 @@ name is the Spanish song canary, bred for its timbre.
 
 ## Install
 
-Unpublished on npm, like every extraction of its kind here; install it by
-commit, which is also the only pinnable form of a git dependency:
+The Rust engine currently supports macOS and Linux. Build it with Rust 1.85+
+and Cargo:
+
+```bash
+cargo build --release --locked
+./target/release/timbrado --help
+```
+
+The native CLI currently exposes `observe` and the `measure` / `experiment`
+JSON protocols. The remaining commands use the JavaScript CLI.
+
+Unpublished on npm; install the JavaScript package by full commit, then build
+its native engine explicitly:
 
 ```bash
 bun add --dev github:oddharsh/timbrado#<full sha>
+cargo build --release --locked --manifest-path node_modules/timbrado/Cargo.toml --target-dir node_modules/timbrado/target
 ```
+
+Alternatively, set `TIMBRADO_BIN` to a matching native executable's absolute
+path. There is no automatic download or TypeScript execution fallback.
+Existing `.ts` watch modules and JavaScript function signatures remain valid.
+Watch execution and `try` require the built engine; pure reporting and network
+resolution APIs do not. This is an explicit setup change in version 0.2.0.
 
 `dist/` is committed and transpiled from `src/` on every commit (the
 conformance suite diffs the two), because node refuses to type-strip a `.ts`
@@ -187,7 +244,12 @@ import { runWatch, watchRow } from "timbrado/watch";
 
 ## Conformance
 
-`bun test` runs the offline suite; `TIMBRADO_LIVE=1 bun test` adds four
-resolves against the real upstreams, so a recipe that rots fails by name.
+`bun run test` builds the native engine and JS distribution, then runs the
+Rust tests and offline JavaScript conformance suite. `bun run check:native`
+checks Rust formatting and Clippy. `bun run test:package` builds the engine
+from the packed source and checks the installed Node API without publishing.
+`TIMBRADO_LIVE=1 bun run test` also resolves
+four real upstream channels. Browser observation is a separate live check
+using the command above; it requires installed browsers.
 
 MIT.

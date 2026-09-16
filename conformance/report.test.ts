@@ -39,6 +39,13 @@ describe("report", () => {
     expect(body).toContain(marker("bun", "s"));
     expect(body).toContain("Reproduce with `timbrado try bun`");
   });
+  test("an unmeasured watch cannot close an issue as green again", () => {
+    const w = { name: "x", issue: "https://github.com/o/r/issues/1", landed: "x" };
+    const row = watchRow(w, { landed: true, detail: "ok" }, { landed: null, detail: "crashed" });
+    const v = verdictOf([], [row]);
+    expect(v).toEqual({ verdict: "instrument", signature: "instrument" });
+    expect(plan({ target: "bun", ...v }, open("existing finding"))).toEqual({ kind: "none" });
+  });
   test("render: a leg's own tables come through, cells escaped, empty ones skipped", () => {
     const body = render({ target: "browsers", verdict: "changed", signature: "s", subject: {}, tables: [
       { caption: "Probes that moved:", columns: ["probe", "pair", "stable|pre"], rows: [["`live:jxl-decode`", "chrome:chrome-canary", "false -> true"]] },

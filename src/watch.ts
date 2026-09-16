@@ -18,15 +18,12 @@
 //      as either answer. `null` never moves a verdict.
 //
 // Scripts run under a runtime executable you name (`bun -e`, `node -e`), in
-// a scratch directory the runner creates and removes, so a probe may write
-// files there and nowhere else. `runWatch` takes the executable so the same
+// a scratch directory the Rust runner creates and removes. This separates
+// files; it is not an OS security sandbox. `runWatch` takes the executable so the same
 // list is read under the PIN and under the CANDIDATE; a row that differs is
 // the finding, a row landed in both is the cue to retire it.
 
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { measure } from "./native.ts";
 
 export type Watch = {
   /** kebab-case, stable: it is part of the issue signature */
@@ -61,20 +58,11 @@ export function checkWatch(w: Watch): string[] {
 
 /** Runs one watch under an executable, in a scratch directory it removes. `landed: null` means the probe did not run. */
 export function runWatch(exe: string, watch: Watch, timeoutMs = 60_000): Reading {
-  const cwd = mkdtempSync(join(tmpdir(), "timbrado-watch-"));
   try {
-    const run = spawnSync(exe, ["-e", watch.script], { cwd, encoding: "utf8", timeout: timeoutMs });
-    const line = (run.stdout || "").trim().split("\n").filter(Boolean).pop() ?? "";
-    try {
-      const parsed = JSON.parse(line) as { landed?: boolean; detail?: string };
-      if (parsed.landed !== true && parsed.landed !== false) throw new Error("no landed boolean");
-      return { landed: parsed.landed, detail: parsed.detail ?? "" };
-    } catch {
-      const why = (run.stderr || run.stdout || "").trim().split("\n").filter(Boolean).pop() ?? `exit ${run.status}`;
-      return { landed: null, detail: `did not run: ${why.slice(0, 120)}` };
-    }
-  } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    const reading = measure({ argv: [exe, "-e", watch.script], timeoutMs }, "probe");
+    return { landed: reading.value, detail: reading.value === null ? `did not run: ${reading.detail}` : reading.detail };
+  } catch (error) {
+    return { landed: null, detail: `did not run: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
 

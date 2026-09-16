@@ -14,6 +14,8 @@ export function plan(report, open) {
   return { kind: "comment", number: open.number };
 }
 export function verdictOf(gates, watches, reason) {
+  if (watches.some((w) => w.pinned === null || w.candidate === null))
+    return { verdict: "instrument", signature: "instrument" };
   const failing = gates.filter((g) => !g.ok);
   const hard = failing.filter((g) => g.hard !== false).map((g) => g.name);
   const soft = failing.filter((g) => g.hard === false).map((g) => g.name);
@@ -53,6 +55,17 @@ export function render(report, runUrl, reproduce) {
         lines.push(`- \`${w.name}\` landed means: ${w.landed}`);
     if (report.watches.some(watchMoved))
       lines.push("");
+  }
+  if (report.experiment) {
+    lines.push(`Experiment: **${report.experiment.outcome}**. Baseline and candidate were measured independently.`, "");
+  }
+  for (const finding of report.opportunities ?? []) {
+    lines.push(`**${cell(finding.name)}: ${cell(finding.status)}**`, "", `Intention: ${cell(finding.intention)}`, "", `Affected paths: ${finding.affected.map((p) => `\`${cell(p)}\``).join(", ")}`, "", `Probe establishes: ${cell(finding.verification)}`, "", "| subject | result | detail |", "|---|---|---|");
+    for (const side of [finding.experiment.baseline, finding.experiment.candidate]) {
+      const m = side.measurement;
+      lines.push(`| ${cell(side.id)} | ${m.value === null ? "did not run" : String(m.value)} | ${cell(m.detail)} |`);
+    }
+    lines.push("", `Adoption condition: ${cell(finding.adoption)}`, "", `Next step: ${cell(finding.nextStep)}`, "", `Sources: ${finding.sources.map((s) => `<${s}>`).join(", ")}`, "");
   }
   for (const t of report.tables ?? []) {
     if (!t.rows.length)

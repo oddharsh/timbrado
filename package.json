@@ -1,6 +1,6 @@
 {
   "name": "timbrado",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Run your own gates against the heads, nightlies, nexts and canaries of what you depend on, watch for the upstream fixes you are waiting on, and read what a pin adopts before you move it. Proposes nothing.",
   "type": "module",
   "license": "MIT",
@@ -9,10 +9,12 @@
     "timbrado": "./dist/cli.js"
   },
   "scripts": {
-    "test": "bun scripts/build.ts && bun test conformance",
+    "test": "cargo test --locked && bun run build && bun test conformance",
     "test:live": "TIMBRADO_LIVE=1 bun test conformance",
+    "test:package": "node scripts/check-package.mjs",
     "timbrado": "bun src/cli.ts",
-    "build": "bun scripts/build.ts"
+    "build": "cargo build --release --locked && bun scripts/build.ts",
+    "check:native": "cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings"
   },
   "engines": {
     "bun": ">=1.4.0"
@@ -58,6 +60,15 @@
   "files": [
     "src",
     "dist",
+    "native",
+    "Cargo.toml",
+    "Cargo.lock",
+    "docs",
+    "examples/*.yml",
+    "examples/browser/*.json",
+    "examples/browser/*.mjs",
+    "examples/browser/bun.lock",
+    "scripts",
     "registry",
     "README.md",
     "LICENSE"
