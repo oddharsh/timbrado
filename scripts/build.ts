@@ -23,7 +23,10 @@ export function buildAll(): Record<string, string> {
     // Relative imports keep their `.ts` spelling in source so bun and tsc
     // resolve them; dist speaks `.js`.
     js = js.replace(/(from\s+"\.\/[^"]+)\.ts"/g, '$1.js"').replace(/(import\s*\(\s*"\.\/[^"]+)\.ts"/g, '$1.js"');
-    if (name === "cli.ts") js = `#!/usr/bin/env node\n${js.replace(/^#!.*\n/, "")}`;
+    // The transpiler drops a shebang, so carry the source's own line across.
+    // The source declares the runtime; the build does not pick one.
+    const shebang = src.match(/^#!.*\n/)?.[0];
+    if (shebang) js = shebang + js.replace(/^#!.*\n/, "");
     out[name.replace(/\.ts$/, ".js")] = js;
   }
   return out;

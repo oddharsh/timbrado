@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // timbrado: run your own gates against the heads, nightlies, nexts and
 // canaries of what you depend on; watch for the upstream fixes you are
 // waiting on; read what a pin adopts before you move it. Proposes nothing.
