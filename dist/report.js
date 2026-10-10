@@ -1,6 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { watchMoved } from "./watch.js";
-export const title = (target) => `timbrado: ${target}`;
+export const title = (target, day) => `timbrado: ${target}${day ? ` (${day})` : ""}`;
+export const utcDay = (at = new Date) => at.toISOString().slice(0, 10);
+export function isTitleFor(issueTitle, target) {
+  const bare = title(target);
+  return issueTitle === bare || issueTitle.startsWith(bare) && /^ \(\d{4}-\d{2}-\d{2}\)$/.test(issueTitle.slice(bare.length));
+}
 export const marker = (target, signature) => `<!-- timbrado:${target} signature:${signature} -->`;
 export function plan(report, open) {
   if (report.verdict === "instrument")
@@ -94,7 +99,7 @@ export function findOpen(target, repo) {
   const want = title(target);
   const scope = repo ? ["--repo", repo] : [];
   const list = JSON.parse(gh(["issue", "list", ...scope, "--state", "open", "--search", `"${want}" in:title`, "--json", "number,title"]));
-  const hit = list.find((i) => i.title === want);
+  const hit = list.find((i) => isTitleFor(i.title, target));
   if (!hit)
     return null;
   const view = JSON.parse(gh(["issue", "view", String(hit.number), ...scope, "--json", "body,comments"]));
@@ -107,7 +112,7 @@ export function apply(action, report, body, repo, labels = []) {
     case "none":
       return `nothing to file (${report.verdict})`;
     case "create": {
-      const url = gh(["issue", "create", ...scope, "--title", title(report.target), "--body", body, ...labels.flatMap((l) => ["--label", l])]).trim();
+      const url = gh(["issue", "create", ...scope, "--title", title(report.target, utcDay()), "--body", body, ...labels.flatMap((l) => ["--label", l])]).trim();
       return `filed ${url}`;
     }
     case "comment":

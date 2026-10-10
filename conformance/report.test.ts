@@ -1,9 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { marker, plan, render, verdictOf } from "../src/report.ts";
+import { isTitleFor, marker, plan, render, title, utcDay, verdictOf } from "../src/report.ts";
 import { watchRow } from "../src/watch.ts";
 
 describe("report", () => {
   const open = (text: string) => ({ number: 7, text });
+  test("the title carries the UTC day it was filed, and the dated and bare forms both find the open issue", () => {
+    expect(title("bun")).toBe("timbrado: bun");
+    expect(title("bun", "2026-10-09")).toBe("timbrado: bun (2026-10-09)");
+    // 23:30 in New York is already the next day in UTC; the title follows UTC, like the runner.
+    expect(utcDay(new Date("2026-10-09T23:30:00-04:00"))).toBe("2026-10-10");
+    expect(isTitleFor("timbrado: bun (2026-10-09)", "bun")).toBe(true);
+    expect(isTitleFor("timbrado: bun", "bun")).toBe(true);
+    expect(isTitleFor("timbrado: bun-pin (2026-10-09)", "bun")).toBe(false);
+    expect(isTitleFor("timbrado: bun-pin", "bun")).toBe(false);
+    expect(isTitleFor("timbrado: bun (flaky)", "bun")).toBe(false);
+    expect(isTitleFor("timbrado: bun (2026-10-09) again", "bun")).toBe(false);
+  });
   test("the decision table", () => {
     const red = { target: "bun", verdict: "red" as const, signature: "red:zstd" };
     expect(plan(red, null)).toEqual({ kind: "create" });
