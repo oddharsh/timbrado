@@ -13,6 +13,11 @@
 // not a finding about the upstream, and an issue saying so trains the reader
 // to close these unread.
 //
+// The title carries the UTC day the issue was filed, `timbrado: bun (2026-10-09)`,
+// because a list of identical `timbrado: bun` rows says nothing about which
+// night broke. The day is decoration on the key: `isTitleFor` matches the bare
+// title too, so an issue filed before titles were dated is still the open one.
+//
 // `plan()` is the decision and is pure. The gh calls are the only side effects.
 
 import { spawnSync } from "node:child_process";
@@ -39,7 +44,14 @@ export type Report = {
 export type Open = { number: number; text: string } | null;
 export type Action = { kind: "none" } | { kind: "create" } | { kind: "comment"; number: number } | { kind: "close"; number: number };
 
-export const title = (target: string) => `timbrado: ${target}`;
+export const title = (target: string, day?: string) => `timbrado: ${target}${day ? ` (${day})` : ""}`;
+/** The UTC calendar day, the one an issue title carries. */
+export const utcDay = (at: Date = new Date()) => at.toISOString().slice(0, 10);
+/** Whether an issue title is this target's, dated or not. `bun-pin` is never `bun`. */
+export function isTitleFor(issueTitle: string, target: string): boolean {
+  const bare = title(target);
+  return issueTitle === bare || (issueTitle.startsWith(bare) && /^ \(\d{4}-\d{2}-\d{2}\)$/.test(issueTitle.slice(bare.length)));
+}
 export const marker = (target: string, signature: string) => `<!-- timbrado:${target} signature:${signature} -->`;
 
 export function plan(report: Pick<Report, "target" | "verdict" | "signature">, open: Open): Action {
@@ -124,7 +136,7 @@ export function findOpen(target: string, repo?: string): Open {
   const want = title(target);
   const scope = repo ? ["--repo", repo] : [];
   const list = JSON.parse(gh(["issue", "list", ...scope, "--state", "open", "--search", `"${want}" in:title`, "--json", "number,title"])) as { number: number; title: string }[];
-  const hit = list.find((i) => i.title === want);
+  const hit = list.find((i) => isTitleFor(i.title, target));
   if (!hit) return null;
   const view = JSON.parse(gh(["issue", "view", String(hit.number), ...scope, "--json", "body,comments"])) as { body: string; comments: { body: string }[] };
   return { number: hit.number, text: [view.body, ...view.comments.map((c) => c.body)].join("\n") };
@@ -135,7 +147,7 @@ export function apply(action: Action, report: Report, body: string, repo?: strin
   switch (action.kind) {
     case "none": return `nothing to file (${report.verdict})`;
     case "create": {
-      const url = gh(["issue", "create", ...scope, "--title", title(report.target), "--body", body, ...labels.flatMap((l) => ["--label", l])]).trim();
+      const url = gh(["issue", "create", ...scope, "--title", title(report.target, utcDay()), "--body", body, ...labels.flatMap((l) => ["--label", l])]).trim();
       return `filed ${url}`;
     }
     case "comment": gh(["issue", "comment", String(action.number), ...scope, "--body", body]); return `commented on #${action.number} (new signature)`;

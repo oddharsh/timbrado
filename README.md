@@ -182,7 +182,10 @@ instrument                         no issue; the caller reds its own job
 ```
 
 The signature is what failed or moved, never which build did it, so a fresh
-head carrying yesterday's broken gate adds nothing.
+head carrying yesterday's broken gate adds nothing. The issue is titled
+`timbrado: <target> (YYYY-MM-DD)`, the UTC day it was filed, so a list of
+them reads as a timeline; an undated `timbrado: <target>` still counts as the
+open one.
 
 ## What it does not do
 
